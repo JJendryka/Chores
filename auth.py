@@ -11,6 +11,8 @@ from authlib.integrations.sqla_oauth2 import (
 )
 from authlib.oauth2.rfc6749 import grants
 import time
+from authlib.integrations.flask_oauth2 import ResourceProtector, current_token
+from authlib.oauth2.rfc6750 import BearerTokenValidator
 
 server = AuthorizationServer()
 blueprint = Blueprint('auth', __name__)
@@ -32,6 +34,12 @@ class PasswordGrant(grants.ResourceOwnerPasswordCredentialsGrant):
 
 # OAuth grant type used by apps that can store a secret securely
 class AuthorizationCodeGrant(grants.AuthorizationCodeGrant):
+    TOKEN_ENDPOINT_AUTH_METHODS = [
+        'client_secret_basic',
+        'client_secret_post',
+        'none',
+    ]
+
     def save_authorization_code(self, code, request):
         client = request.client
         auth_code = AuthorizationCode(
@@ -62,6 +70,14 @@ def init_app(app, db):
     query_client = create_query_client_func(db.session, Client)
     save_token = create_save_token_func(db.session, Token)
     server.init_app(app, query_client=query_client, save_token=save_token)
+
+    import logging
+    import sys
+    log = logging.getLogger('authlib')
+    log.addHandler(logging.StreamHandler(sys.stdout))
+    log.setLevel(logging.DEBUG)
+
+    # Register grants
     server.register_grant(grants.ImplicitGrant)
     server.register_grant(PasswordGrant)
     server.register_grant(AuthorizationCodeGrant)
@@ -130,14 +146,6 @@ class ChangePasswordForm(FlaskForm):
     submit = SubmitField('Change password')
 
 class RegisterClientForm(FlaskForm):
-    username = StringField(
-        'Username',
-        validators=[DataRequired()]
-    )
-    password = PasswordField(
-        'Password',
-        validators=[DataRequired()]
-    )
     client_name = StringField(
         'Client Name',
         validators=[DataRequired()]
@@ -153,8 +161,10 @@ class RegisterClientForm(FlaskForm):
         "Response Types",
         validators=[DataRequired()]
     )
-    token_endpoint_auth_method = BooleanField(
-        "Generate secret (for web-server type apps)"
+    token_endpoint_auth_method = SelectField(
+        "Token Endpoint Authentication Method",
+        choices=[("none", "None"), ("client_secret_basic", "Client Secret Basic"), ("client_secret_post", "Client Secret Post")],
+        validators=[DataRequired()]
     )
     submit = SubmitField('Register client')
 
@@ -177,9 +187,9 @@ def register():
                     form.username.errors.append('Username already taken.')
             return render_template('register.html', form=form)
         else:
-            return "User does not have admin privileges"
+            return "User does not have admin privileges", 403
     else:
-        return "Need to be logged in"
+        return "Need to be logged in", 403
 
 @blueprint.route('/auth/change_password', methods=['GET', 'POST'])
 def change_password():
@@ -194,7 +204,7 @@ def change_password():
                 return render_template('success.html')
             return render_template('change_password.html', form=form)
         else:
-            "User does not exist."
+            return "User does not exist."
     else:
         return "Needs to be logged in."
 
@@ -238,11 +248,12 @@ def split_by_crlf(s):
 
 @blueprint.route('/auth/register_client', methods=['GET', 'POST'])
 def register_client():
-    form = RegisterClientForm()
-    if form.validate_on_submit():
-        user = User.query.filter_by(username=form.username.data).first()
-        if user is not None and user.check_password(form.password.data):
-            if user.is_admin:
+    if 'username' in session:
+        username = session['username']
+        user = User.query.filter_by(username=username).first()
+        if user is not None and user.is_admin:
+            form = RegisterClientForm()
+            if form.validate_on_submit():
                 client = Client()
                 client.user_id = user.id
                 client.client_id = gen_salt(24)
@@ -256,7 +267,7 @@ def register_client():
                 }
                 client.set_client_metadata(client_metadata)
 
-                if not form.token_endpoint_auth_method.data:
+                if form.token_endpoint_auth_method.data == "none":
                     client.client_secret = ''
                 else:
                     client.client_secret = gen_salt(48)
@@ -264,12 +275,19 @@ def register_client():
                 db.session.add(client)
                 db.session.commit()
                 return render_template('client_register_success.html', client_id=client.client_id, client_secret=client.client_secret)
-            else:
-                form.username.errors.append('User is not an admin')
+            return render_template('register_client.html', form=form)
         else:
-            form.password.errors.append('Invalid username or password.')
-    return render_template('register_client.html', form=form)
+            return "User does not have admin privileges", 403
+    else:
+        return "Need to be logged in", 403
+
 
 @blueprint.route('/auth/token', methods=['POST'])
 def issue_token():
     return server.create_token_response()
+
+
+require_oauth = ResourceProtector()
+from authlib.integrations.sqla_oauth2 import create_bearer_token_validator
+BearerTokenValidator = create_bearer_token_validator(db.session, Token)
+require_oauth.register_token_validator(BearerTokenValidator())

@@ -14,6 +14,9 @@ class User(db.Model):
     is_admin = db.Column(db.Boolean, nullable=False)
     counters = db.relationship('Counter', backref='user', lazy=True)
 
+    def get_user_id(self):
+        return self.id
+
     def check_password(self, password):
         return check_password_hash(self.password, password)
 

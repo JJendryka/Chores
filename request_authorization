@@ -1,0 +1,5 @@
+http://127.0.0.1:5000/auth/authorize?
+client_id=Q4d0ptwwnEeDf8vJ0YfYH6JQ&
+response_type=token&
+redirect_uri=test&
+state=12345

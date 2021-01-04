@@ -1,0 +1,4 @@
+http://127.0.0.1:5000/auth/token?
+grant_type=code&
+code=mzBgyLUuCHJoTw18f2vgmp75Y1OwZITd4p8blt8tb0f7olwa
+client_id=Q4d0ptwwnEeDf8vJ0YfYH6JQ
