@@ -1,0 +1,18 @@
+{% from "_formhelpers.html" import render_field %}
+<h1>Register client</h1>
+<div>
+    <form method="POST">
+        {{ form.csrf_token }}
+        <b>Your authentication data:</b>
+        {{ render_field(form.username) }}
+        {{ render_field(form.password) }}
+        <br>
+        <b>Client data:</b>
+        {{ render_field(form.client_name) }}
+        {{ render_field(form.client_uri) }}
+        {{ render_field(form.redirect_uris) }}
+        {{ render_field(form.response_types) }}
+        {{ render_field(form.token_endpoint_auth_method) }}
+        {{ render_field(form.submit) }}
+    </form>
+</div>
